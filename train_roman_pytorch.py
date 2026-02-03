@@ -1,0 +1,84 @@
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms, models
+from torch.utils.data import DataLoader
+# import matplotlib.pyplot as plt
+
+# Set device, Chooses GPU if available, else CPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Paths
+train_dir = "C:/Users/darab/OneDrive/Desktop/FINAL AI PROJECT/AI PROJECT/Dataset/train"
+
+# Image transformations
+transform = transforms.Compose([
+    transforms.Resize((64, 64)),
+    transforms.ToTensor(),
+    # mean=0.5, std=0.5, Normalizes tensor to [-1, 1]
+    transforms.Normalize([0.5], [0.5])
+])
+
+# Dataset and loaders with 80/20 split
+full_dataset = datasets.ImageFolder(train_dir, transform=transform)
+num_classes = len(full_dataset.classes)
+train_size = int(0.8 * len(full_dataset))
+val_size = len(full_dataset) - train_size
+train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+# Define CNN model
+class RomanCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(RomanCNN, self).__init__()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(), nn.MaxPool2d(2)
+        )
+        self.fc_layers = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 8 * 8, 256), nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.conv_layers(x)
+        x = self.fc_layers(x)
+        return x
+
+model = RomanCNN(num_classes=num_classes).to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training loop
+num_epochs = 10
+for epoch in range(num_epochs):
+    model.train()
+    running_loss, correct, total = 0, 0, 0
+    for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, predicted = outputs.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+
+    train_acc = 100. * correct / total
+    print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss:.4f}, Accuracy: {train_acc:.2f}%")
+
+# Save the model
+save_path = "C:/Users/darab/OneDrive/Desktop/FINAL AI PROJECT/AI PROJECT/roman_model.pth"
+torch.save(model.state_dict(), save_path)
+print(f"PyTorch model saved to: {save_path}")
+
